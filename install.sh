@@ -14,15 +14,15 @@ if [ -e "addhost.sh" ]; then
     #checks if there is an older version of addhost file in /usr/local/bin 
     if [ -e "/usr/local/bin/addhost" ]; then
     echo "addhost file already exists..."
-    echo "Do you want to remove it and install a new version?"
-    select yn in "Yes" "No"; do
+    read -p "Do you want to remove it and install a new version? [Y/n]:" yn
       case $yn in
-      Yes ) rm -r /usr/local/bin/addhost;;
-      No ) exit 1;;
+      [Yy]* ) rm -r /usr/local/bin/addhost && echo "older addhost removed" && cp addhost.sh /usr/local/bin/addhost && echo "new addhost file added";;
+      [Nn]* ) echo "Installation abort, exiting..." && exit 1;;
+      * ) echo "Please answer yes or no.";;      
       esac
-    done
+    else 
+    cp addhost.sh /usr/local/bin/addhost && echo "addhost file added"
     fi
-    cp addhost.sh /usr/local/bin/addhost
 else
     echo "There is no addhost.sh file in your working directory, please add it"
     exit 1
