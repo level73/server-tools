@@ -43,8 +43,17 @@ absolute_doc_root=$web_root$relative_doc_root
 if [ ! -d "$absolute_doc_root" ]; then
 	#create dir
 	`mkdir "$absolute_doc_root/"`
-	#create public html dir
-	`mkdir "$absolute_doc_root/public_html"`
+	#create public html dir or wordpress dir
+	install_dir=0
+	read -p "Is this a WordPress site? [Y/n]" yn
+    case $yn in
+      [Yy]* ) install_dir="wordpress";;
+      [Nn]* ) install_dir="public_html";;
+      * ) echo "Please answer yes or no.";;      
+    esac
+	echo "Installation directory is /${install_dir}/"
+	`mkdir "$absolute_doc_root/$install_dir"`
+
 	#create logs dir
 	`mkdir "$absolute_doc_root/logs"`
 
