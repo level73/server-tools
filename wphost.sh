@@ -41,7 +41,7 @@ dur_latestzip() {
 #change owner for wordpress dir (ok!)
 change_owner() {
     echo "Changing owner to wordpress dir..."
-    chown -R www-data:www-data var/www/wordpress
+    chown -R www-data:www-data /var/www/wordpress
 }
 
 #create db calling setmysql.sh
@@ -52,4 +52,5 @@ create_db() {
 
 #call all functions (logic is ok!)
 
-((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && ((dur_latestzip && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && ((change_owner && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
+#((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && ((dur_latestzip && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && 
+((change_owner && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
