@@ -31,16 +31,17 @@ create_host() {
     addhost
 }
 
-#Download && Unzip && Delete wp latest.zip 
-#NOTE: unzip process will create "wordpress" dir
+#Download && Unzip && Delete wp latest.zip (ok!)
+#NOTE: unzip process will create "wordpress" dir (ok!)
 dur_latestzip() {
     echo "Downloading WordPress latest version..."
-    (wget -nd https://wordpress.org/latest.zip -P /var/www/wordpress/ && echo "latest.zip download complete." || echo "latest.zip download failed.") && (unzip latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r latest.zip && echo "zip file deleted." || echo "removing zip file failed.") 
+    (wget -nd https://wordpress.org/latest.zip -P /var/www/wordpress/ && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd /var/www/wordpress/ && unzip -j latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r /var/www/wordpress/latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
 }
-#change owner for wordpress dir
+
+#change owner for wordpress dir (ok!)
 change_owner() {
     echo "Changing owner to wordpress dir..."
-    chown -r www-data:www-data var/www/wordpress
+    chown -R www-data:www-data var/www/wordpress
 }
 
 #create db calling setmysql.sh
@@ -49,6 +50,6 @@ create_db() {
     setmysql
 }
 
-#call all functions
+#call all functions (logic is ok!)
 
-(create_host && echo "Virtual Host Created." || echo "virtual host FAILED...") && (dur_latestzip && echo "WP download completed." || echo "WP download FAILED.") && (change_owner && echo "Owner changed." || echo "changing owner FAILED.") && (create_db && echo "MySQL db created." || echo "data base creation FAILED.")
+((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && ((dur_latestzip && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && ((change_owner && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
