@@ -1,5 +1,6 @@
+#!/bin/bash
 #Script that install an ssl certificate using Let's Encrypt and CertBot
-
+#ref: https://certbot.eff.org/lets-encrypt/ubuntubionic-apache
 
 #makes sure user is root
 if [ "$(whoami)" != 'root' ]; then
@@ -30,14 +31,27 @@ install_certbot() {
 #prepare certbot command
 prepare_certbot() {
     echo "Preparing certbot command..."
-    (sudo ln -s /snap/bin/certbot /usr/bin/certbot && echo "certbot command prepared.") || (echo "certbot command not prepared, exiting..." && exit 1)
+    (sudo ln -s /snap/bin/certbot /usr/bin/certbot && echo "certbot command prepared.") || (echo "certbot command not prepared, exiting..." )
 }
 
 
 #run certbot and choose for an automatic or manual config
 run_certbot () {
 
-    
+    read -p "Do you want to automatic configure certbot? [Y/n]:" yn
+      case $yn in
+      [Yy]* ) (echo "running AUTOMATIC config of CertBot" && sudo certbot --apache) || (echo "Failed AUTO-config certbot..." && exit 1) ;;
+      [Nn]* ) echo "running MANUAL config of CertBot"  || (echo "Failed AUTO-config certbot..." && exit 1) ;;
+      * ) echo "Please answer yes or no.";;      
+      esac
+
 }
 
+#Test the configuration change 
+test_config() {
+    echo "Testing config changing..."
+    (sudo certbot renew --dry-run && echo "config test complete.") || (echo "Test failed...")
+}
 
+#RUN functions 
+snap_install && certbot_exists && install_certbot && prepare_certbot && run_certbot && test_config 
