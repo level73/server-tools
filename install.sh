@@ -6,29 +6,50 @@ if [ "$(whoami)" != 'root' ]; then
     exit 1
 fi
 
-#Adds executable permission to addhost file, if exists, and copies it to /usr/local/bin
 
-if [ -e "addhost.sh" ]; then
-    chmod +x addhost.sh
-
-    #checks if there is an older version of addhost file in /usr/local/bin 
-    if [ -e "/usr/local/bin/addhost" ]; then
-    echo "addhost file already exists..."
+updater() {
+    #checks if there is an older version of the script file in /usr/local/bin 
+    if [ -e "/usr/local/bin/${1%.sh}" ]; then
+    echo "${1%.sh} file already exists..."
     read -p "Do you want to remove it and install a new version? [Y/n]:" yn
       case $yn in
-      [Yy]* ) rm -r /usr/local/bin/addhost && echo "older addhost removed" && cp addhost.sh /usr/local/bin/addhost && echo "new addhost file added";;
-      [Nn]* ) echo "Installation abort, exiting..." && exit 1;;
+      [Yy]* ) rm -r /usr/local/bin/${1%.sh} && echo "older ${1%.sh} removed" && cp $1 /usr/local/bin/${1%.sh} && echo "new ${1%.sh} file added";;
+      [Nn]* ) echo "Installation of ${1%.sh} abort..." ;;
       * ) echo "Please answer yes or no.";;      
       esac
     else 
-    cp addhost.sh /usr/local/bin/addhost && echo "addhost file added"
+    cp $1 /usr/local/bin/${1%.sh} && echo "${1%.sh} file added"
     fi
-else
-    echo "There is no addhost.sh file in your working directory, please add it"
+}
+
+installer() {
+    #check if script is in working dir, than install/update it 
+    if [ -e $1 ]; then
+        chmod +x $1
+        updater $1
+    else
+    echo "There is no $1 file in your working directory, please add it"
     exit 1
-fi
-if [ -e "/usr/local/bin/addhost" ]; then
-    echo "Installation completed."
-else
-    echo "Failed Installing..."
-fi
+    fi
+    if [ -e "/usr/local/bin/${1%.sh}" ]; then
+        echo "Installation of ${1%.sh} completed."
+    else
+        echo "Failed Installing ${1%.sh}..."
+    fi
+}
+
+
+#array list of installation programs. Please insert a new script here to be installed
+#remove suffix of element echo ${i%.sh} 
+scripts=('addhost.sh' 'wphost.sh' 'setmysql.sh' 'getssl.sh')
+
+
+#call installer for every script in array
+for i in "${scripts[@]}"; do 
+    installer $i
+done 
+
+#debug, print exec path of scripts
+for i in "${scripts[@]}"; do 
+    which ${i%.sh}
+done 
