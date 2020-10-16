@@ -1,3 +1,4 @@
+#!/bin/bash
 # This script will add a virtual host with wordpress to your apache server
 
 #1- download latest wordpress zip file    >>>  LOCATION?? == /var/www/wordpress/
