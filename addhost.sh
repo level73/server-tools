@@ -10,7 +10,7 @@ fi
 current_directory="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 hosts_path="/etc/hosts"
 vhosts_path="/etc/apache2/sites-available/"
-vhost_blueprint="$current_directory/vhost.blueprint.conf"
+vhost_blueprint="$current_directory/blueprints/vhost.blueprint.conf"
 web_root="/var/www/"
 
 #user input passed on CLI
@@ -54,6 +54,13 @@ if [ ! -d "$absolute_doc_root" ]; then
 	echo "Installation directory is /${install_dir}/"
 	`mkdir "$absolute_doc_root/$install_dir"`
 
+	#call wphost if site is a wordpress site
+	if [ "$install_dir" = "wordpress" ]; then
+		wp_dir="$absolute_doc_root/$install_dir/"
+		echo "Wordpress dir is : $wp_dir"
+		wphost "$wp_dir"
+	fi
+
 	#create logs dir
 	`mkdir "$absolute_doc_root/logs"`
 
@@ -66,15 +73,23 @@ echo "Absolute Doc Root is: $absolute_doc_root"
 #update the vhost file
 vhost=`cat "$vhost_blueprint"`
 vhost=${vhost//@site_url@/$site_url}
-vhost=${vhost//@site_docroot@/$absolute_doc_root}
+vhost=${vhost//@site_docroot@/$absolute_doc_root}	
+vhost=${vhost//@install_dir@/$install_dir}	
+
 
 `touch $vhosts_path$site_url.conf`
 echo "$vhost" > "$vhosts_path$site_url.conf"
 echo "Updated the vhosts in the Apache Directory"
 
 #update the hosts file
-echo 127.0.0.1	$site_url >> $hosts_path
-echo "Updated the hosts file"
+# SOLO SE LOCALE!! INSERT IF NOT LOCAL SITE.
+	read -p "Is this a LOCAL site? [Y/n]" yn
+    case $yn in
+      [Yy]* ) echo 127.0.0.1	$site_url >> $hosts_path && echo "Updated the hosts file";;
+      [Nn]* ) echo "Implement if not local..." && continue;;
+      * ) echo "Please answer yes or no.";;      
+    esac
+	
 
 #Enable and restart Apache
 echo "Enabling new website..."

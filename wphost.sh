@@ -26,23 +26,26 @@ type php >/dev/null 2>&1 && echo "PHP present." || quitting
 program="MySQL"
 type mysql >/dev/null 2>&1 && echo "MySQL present." || quitting
 
-#create vhost for wordpress dir calling addhost.sh
-create_host() {
-    echo "Begin creating a virtual host..."
-    addhost
-}
+
+echo "WP dir is $1"
+
+# #create vhost for wordpress dir calling addhost.sh
+# create_host() {
+#     echo "Begin creating a virtual host..."
+#     addhost
+# }
 
 #Download && Unzip && Delete wp latest.zip (ok!)
 #NOTE: unzip process will create "wordpress" dir (ok!)
 dur_latestzip() {
     echo "Downloading WordPress latest version..."
-    (wget -nd https://wordpress.org/latest.zip -P /var/www/wordpress/ && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd /var/www/wordpress/ && unzip -j latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r /var/www/wordpress/latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
+    (wget -nd -P $1 https://wordpress.org/latest.zip  && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd $1 && unzip -j latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
 }
 
 #change owner for wordpress dir (ok!)
 change_owner() {
     echo "Changing owner to wordpress dir..."
-    chown -R www-data:www-data /var/www/wordpress
+    chown -R www-data:www-data "$1/"
 }
 
 #create db calling setmysql.sh
@@ -53,5 +56,5 @@ create_db() {
 
 #call all functions (logic is ok!)
 
-#((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && ((dur_latestzip && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && 
-((change_owner && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
+#((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && 
+((dur_latestzip $1 && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && ((change_owner $1 && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
