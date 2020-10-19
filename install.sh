@@ -53,3 +53,9 @@ done
 for i in "${scripts[@]}"; do 
     which ${i%.sh}
 done 
+
+if [ -e "/usr/local/bin/blueprints" ]; then
+    echo "Blueprints folder is present."
+else
+    cp -r blueprints/ /usr/local/bin/blueprints && echo "Blueprints folder added."
+fi
