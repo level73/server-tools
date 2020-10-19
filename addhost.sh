@@ -54,6 +54,12 @@ if [ ! -d "$absolute_doc_root" ]; then
 	echo "Installation directory is /${install_dir}/"
 	`mkdir "$absolute_doc_root/$install_dir"`
 
+	#create logs dir
+	`mkdir "$absolute_doc_root/logs"`
+
+	`chown -R $SUDO_USER:staff "$absolute_doc_root/"`
+	echo "Created directory $absolute_doc_root along with logs and public_html"
+
 	#call wphost if site is a wordpress site
 	if [ "$install_dir" = "wordpress" ]; then
 		wp_dir="$absolute_doc_root/$install_dir/"
@@ -61,11 +67,6 @@ if [ ! -d "$absolute_doc_root" ]; then
 		wphost "$wp_dir"
 	fi
 
-	#create logs dir
-	`mkdir "$absolute_doc_root/logs"`
-
-	`chown -R $SUDO_USER:staff "$absolute_doc_root/"`
-	echo "Created directory $absolute_doc_root along with logs and public_html"
 fi
 
 echo "Absolute Doc Root is: $absolute_doc_root"
