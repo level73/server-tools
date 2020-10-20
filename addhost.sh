@@ -52,7 +52,7 @@ if [ ! -d "$absolute_doc_root" ]; then
       * ) echo "Please answer yes or no.";;      
     esac
 	echo "Installation directory is /${install_dir}/"
-	`mkdir "$absolute_doc_root/$install_dir"`
+	
 
 	#create logs dir
 	`mkdir "$absolute_doc_root/logs"`
@@ -62,9 +62,12 @@ if [ ! -d "$absolute_doc_root" ]; then
 
 	#call wphost if site is a wordpress site
 	if [ "$install_dir" = "wordpress" ]; then
-		wp_dir="$absolute_doc_root/$install_dir/"
+		wp_dir="$absolute_doc_root/"
 		echo "Wordpress dir is : $wp_dir"
 		wphost "$wp_dir"
+	else 
+		#if NOT a wordpress site, create a /puclic_html dir inside abs doc root
+		`mkdir "$absolute_doc_root/$install_dir"`
 	fi
 
 fi

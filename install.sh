@@ -54,8 +54,16 @@ for i in "${scripts[@]}"; do
     which ${i%.sh}
 done 
 
+
+#Blueprints dir installation dir
 if [ -e "/usr/local/bin/blueprints" ]; then
     echo "Blueprints folder is present."
+    read -p "Do you want to remove it and install a new version? [Y/n]:" yn
+      case $yn in
+      [Yy]* ) rm -r /usr/local/bin/blueprints && echo "older blueprints dir removed" && cp -r blueprints/ /usr/local/bin/blueprints && echo "new Blueprints folder added.";;
+      [Nn]* ) echo "Installation of blueprints dir abort..." ;;
+      * ) echo "Please answer yes or no.";;      
+      esac
 else
     cp -r blueprints/ /usr/local/bin/blueprints && echo "Blueprints folder added."
 fi

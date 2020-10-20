@@ -39,13 +39,13 @@ echo "WP dir is $1"
 #NOTE: unzip process will create "wordpress" dir (ok!)
 dur_latestzip() {
     echo "Downloading WordPress latest version..."
-    (wget -nd -P $1 https://wordpress.org/latest.zip  && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd $1 && unzip -j latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
+    (wget -nd -P $1 https://wordpress.org/latest.zip  && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd $1 && unzip latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r $1/latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
 }
 
 #change owner for wordpress dir (ok!)
 change_owner() {
     echo "Changing owner to wordpress dir..."
-    chown -R www-data:www-data "$1/"
+    chown -R www-data:www-data "$1/wordpress/"
 }
 
 #create db calling setmysql.sh
