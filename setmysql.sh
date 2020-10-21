@@ -35,7 +35,7 @@ read -p "Type what USER to grant permission for \" ${dbname} \":" username
 
 #string queries (ok!)
 create_db_query="CREATE DATABASE IF NOT EXISTS ${dbname}; "
-create_user_query="CREATE USER '${username}'@'localhost' IDENTIFIED BY '${password}'; "
+#creating the "create_user_query" just if you want to create a new user. see #query constructor block
 grant_perm_query="GRANT ALL ON ${dbname}.* TO '${username}'@'localhost'; flush privileges; "
 result_query="USE mysql; SELECT user FROM user; SHOW DATABASES; "
 
@@ -51,7 +51,7 @@ user_exists=$(mysql -u root -p -se " SELECT EXISTS(SELECT 1 FROM mysql.user WHER
 if [ ${user_exists} != 1 ]; then
     read -p "User ${username} NOT exists, do you want to create it? [Y/n]" yn
     case $yn in
-      [Yy]* ) read -p "Type a password for \"${username}\":" password && query="$create_db_query$create_user_query$grant_perm_query$result_query";;
+      [Yy]* ) read -p "Type a password for \"${username}\":" password && create_user_query="CREATE USER '${username}'@'localhost' IDENTIFIED BY '${password}'; " && query="$create_db_query$create_user_query$grant_perm_query$result_query";;
       [Nn]* ) echo "Exiting process..." && exit 1;;
       * ) echo "Please answer yes or no.";;      
       esac
@@ -59,13 +59,23 @@ else
     query="$create_db_query$grant_perm_query$result_query"
 fi
 
+
+
 #debugger
-#echo ${query}
+echo "You are injecting the following query:"
+echo ${query}
 
 #call query (ok!)
-echo "Login to mysql as root:"
+echo "Login to mysql as ROOT:"
 mysql -u root -p -e "${query}"
 
-echo "Operation Completed."
+#Another query injection method:
+# read -sp "Enter ROOT password:" rootpasswd
+# mysql -uroot -p${rootpasswd} -e "${create_db_query}"
+# mysql -uroot -p${rootpasswd} -e "${create_user_query}"
+# mysql -uroot -p${rootpasswd} -e "${grant_perm_query}"
+# mysql -uroot -p${rootpasswd} -e "${result_query}"
+
+echo "MySql Settings Completed."
 
 
