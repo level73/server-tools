@@ -43,7 +43,7 @@ result_query="USE mysql; SELECT user FROM user; SHOW DATABASES; "
 
 #checks if user exists (ok!)
 echo "Checking if user exists, connecting to mysql as root..."
-user_exists=$(mysql --login-path=local -se " SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '$username'); ")
+user_exists=$(mysql -se " SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '$username'); ")
 
 #debugger
 #echo ${user_exists}
@@ -69,7 +69,7 @@ echo ${query}
 
 #call query (ok!)
 echo "Login to mysql as ROOT:"
-mysql --login-path=local -e "${query}"
+mysql -e "${query}"
 
 #Another query injection method:
 # read -sp "Enter ROOT password:" rootpasswd
