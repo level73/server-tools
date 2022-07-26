@@ -13,6 +13,8 @@
 #rev arch 13/10/2020
 #previuous revs are tedious, now focusing on using sql querys from bash 
 
+#rev 21/07/2022
+#sql admin checks automatized
 
 #makes sure user is root (ok!)
 if [ "$(whoami)" != 'root' ]; then
@@ -41,7 +43,7 @@ result_query="USE mysql; SELECT user FROM user; SHOW DATABASES; "
 
 #checks if user exists (ok!)
 echo "Checking if user exists, connecting to mysql as root..."
-user_exists=$(mysql -u root -p -se " SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '$username'); ")
+user_exists=$(mysql --login-path=local -se " SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '$username'); ")
 
 #debugger
 #echo ${user_exists}
@@ -67,7 +69,7 @@ echo ${query}
 
 #call query (ok!)
 echo "Login to mysql as ROOT:"
-mysql -u root -p -e "${query}"
+mysql --login-path=local -e "${query}"
 
 #Another query injection method:
 # read -sp "Enter ROOT password:" rootpasswd
