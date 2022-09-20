@@ -41,7 +41,7 @@ installer() {
 
 #array list of installation programs. Please insert a new script here to be installed
 #remove suffix of element echo ${i%.sh} 
-scripts=('addhost.sh' 'wphost.sh' 'setmysql.sh' 'getssl.sh')
+scripts=('addhost.sh' 'wphost.sh' 'setmysql.sh' 'getssl.sh' 'setssl.sh')
 
 
 #call installer for every script in array

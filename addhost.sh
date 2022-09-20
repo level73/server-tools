@@ -102,4 +102,7 @@ echo `a2ensite $site_url`
 echo "Restarting Apache..."
 echo `systemctl restart apache2`
 
+#call "setssl" for enable SSL with CERTBOT
+setssl "$site_url"
+
 echo "Done"
