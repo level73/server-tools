@@ -14,4 +14,4 @@ certbot_command(){
 	
 }
 
-certbot_command
+certbot_command "$1"
