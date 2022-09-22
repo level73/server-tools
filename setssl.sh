@@ -8,6 +8,8 @@ fi
 
 #!!! make sure to pass the site url as argument, WITHOUT "www." !!!
 
+#tested with direct script execution
+
 #command for activate ssl, using global variable "site_url"
 echo "setting SSL certificate with certbot..."
 
