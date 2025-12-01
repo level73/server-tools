@@ -17,3 +17,11 @@ Set of bash scripts to run basic setup for virtual hosts, applications and whatn
    `sudo mysql_config_editor set --login-path=client --host=localhost --user=root --password`
    
 #then enter your password
+
+# MySQL Monitor
+A simple script to check if MySQL is running, and to restart it if needed. 
+1. change permissions with 
+`sudo chmod +x mysql_monitor.sh` to make the script executable
+2. Add to crontab with `sudo crontab -e`
+3. Paste to crontab: `* * * * * {PATH_TO_SCRIPT}/mysql_monitor.sh > /dev/null 2>&1`
+4. Save and exit (`CTRL+X`, `Y`, `ENTER`)
