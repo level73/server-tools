@@ -1,27 +1,31 @@
 # server-tools
 Set of bash scripts to run basic setup for virtual hosts, applications and whatnot
 
-# Installation
-1. clone the repository from github the way you want
+## Installation
+1. Clone the repository from Github the way you want
 
-2. navigate to the directory where you cloned the repo and add executable permission to "install.sh"  
+2. Navigate to the directory where you cloned the repo and add executable permission to "install.sh"
 
    `$ chmod +x install.sh`
 
-3. run installation script with sudo privileges  
+3. Run installation script with sudo privileges
 
    `$ sudo ./install.sh`
 
-#Config for MYSQL - use this command to store mysql password on your machine:
+## Usage
+To create a virtual host for a generic website, and the relative directory in /var/www/, use:
 
-   `sudo mysql_config_editor set --login-path=client --host=localhost --user=root --password`
-   
-#then enter your password
+```$ sudo addhost -t generic -u example.com -a www.example.com -d example.com```
 
-# MySQL Monitor
-A simple script to check if MySQL is running, and to restart it if needed. 
-1. change permissions with 
-`sudo chmod +x mysql_monitor.sh` to make the script executable
-2. Add to crontab with `sudo crontab -e`
-3. Paste to crontab: `* * * * * {PATH_TO_SCRIPT}/mysql_monitor.sh > /dev/null 2>&1`
-4. Save and exit (`CTRL+X`, `Y`, `ENTER`)
+## Wordpress
+This small suite allows to set up a VHOST and automatically install a WordPress instance in the target directory.
+To do so the tool requires [WP CLI](https://wordpress.org/cli/) to be available in the VPS.
+Use:
+
+```$ sudo addhost -t wordpress -u example.com -a www.example.com -d example.com```
+
+## Loom73
+Loom73 is the upcoming blueprint for PHP applications that we use in Level73.
+To set up the infrastructure for it, use:
+
+```$ sudo addhost -t loom73 -u example.com -a www.example.com -d example.com -o deploy```

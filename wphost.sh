@@ -1,60 +1,322 @@
 #!/bin/bash
-# This script will add a virtual host with wordpress to your apache server
 
-#1- download latest wordpress zip file    >>>  LOCATION?? == /var/www/wordpress/
-#2- unzip wordpress at same level of public html dir
-#3- remove zip file if unzipping went ok
-# change permission to wordpress dit with " chown -r www-data:www-data wordpress " command
-#4- create virtual host for wordpress dir
-#5- create db with setmysql.sh
+set -Eeuo pipefail
 
-#makes sure user is root
-if [ "$(whoami)" != 'root' ]; then
-    echo "Please run the script with sudo privileges..."
-    exit 1
+readonly WEB_ROOT='/var/www'
+
+usage() {
+    printf '%s\n' \
+        "Usage: sudo ${0##*/} \\" \
+        '  -d DOCUMENT_ROOT \' \
+        '  -v VERSION \' \
+        '  -o SITE_USER \' \
+        '  [-l LOCALE]'
+}
+
+resolve_site_user() {
+    local requested_user=${1-}
+
+    if ! validate_site_user "$requested_user"; then
+        printf 'Error: invalid site user: %q\n' "$requested_user" >&2
+        return 1
+    fi
+
+    if ! getent passwd "$requested_user" >/dev/null; then
+        printf 'Error: site user does not exist: %q\n' \
+            "$requested_user" >&2
+        return 1
+    fi
+
+    SITE_USER=$requested_user
+
+    if ! SITE_UID=$(id -u -- "$SITE_USER"); then
+        printf 'Error: unable to resolve UID for %q\n' "$SITE_USER" >&2
+        return 1
+    fi
+    if (( SITE_UID == 0 )); then
+        printf 'Error: root cannot be used as site user\n' >&2
+        return 1
+    fi
+    if [[ $SITE_USER == 'www-data' ]]; then
+        printf 'Error: shared PHP user cannot be used as site owner: %s\n' \
+            "$SITE_USER" >&2
+        return 1
+    fi
+    if ! SITE_GID=$(id -g -- "$SITE_USER"); then
+        printf 'Error: unable to resolve GID for %q\n' "$SITE_USER" >&2
+        return 1
+    fi
+
+    if ! SITE_GROUP=$(id -gn -- "$SITE_USER"); then
+        printf 'Error: unable to resolve group for %q\n' "$SITE_USER" >&2
+        return 1
+    fi
+}
+validate_site_user() {
+    [[ ${1-} =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
+}
+validate_version() {
+    [[ ${1-} =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+}
+
+validate_locale() {
+    [[ ${1-} =~ ^[A-Za-z][A-Za-z0-9_.@-]{1,31}$ ]]
+}
+
+is_wordpress_tree() {
+    local wordpress_path=${1-}
+
+    [[ -d $wordpress_path ]] &&
+    [[ -f $wordpress_path/wp-settings.php ]] &&
+    [[ -d $wordpress_path/wp-admin ]] &&
+    [[ -d $wordpress_path/wp-content ]] &&
+    [[ -d $wordpress_path/wp-includes ]]
+}
+
+cleanup_staging() {
+    if [[ -n ${staging_dir-} &&
+          -n ${absolute_doc_root-} &&
+          $staging_dir == "$absolute_doc_root"/.wphost.* &&
+          -d $staging_dir ]]
+    then
+        if ! rm -rf -- "$staging_dir"; then
+            printf 'Warning: unable to remove staging directory: %s\n' \
+                "$staging_dir" >&2
+        fi
+    fi
+}
+if (( EUID != 0 )); then
+    printf 'Error: root privileges are required; run with sudo\n' >&2
+    exit 77
 fi
 
-#quitting function (ok!)
-quitting() {
-    echo "${program} not present." && exit 1;
-}
-#checking if php is installed, if not >> exit 
-program="PHP"
-type php >/dev/null 2>&1 && echo "PHP present." || quitting
+# CLI input
+document_root=''
+wordpress_version=''
+wordpress_locale='en_US'
+site_user=''
 
-#checking if mysql is installed, if not >> exit 
-program="MySQL"
-type mysql >/dev/null 2>&1 && echo "MySQL present." || quitting
+while getopts ':d:v:l:o:h' option; do
+    case "$option" in
+        d)
+            document_root=$OPTARG
+            ;;
+        v)
+            wordpress_version=$OPTARG
+            ;;
+        l)
+            wordpress_locale=$OPTARG
+            ;;
+        o)
+            site_user=$OPTARG
+            ;;
+        h)
+            usage
+            exit 0
+            ;;
+        :)
+            printf 'Error: -%s requires an argument\n' "$OPTARG" >&2
+            usage >&2
+            exit 64
+            ;;
+        \?)
+            printf 'Error: unknown option: -%s\n' "$OPTARG" >&2
+            usage >&2
+            exit 64
+            ;;
+    esac
+done
 
+shift "$((OPTIND - 1))"
 
-echo "WP dir is $1"
+if (( $# > 0 )); then
+    printf 'Error: unexpected positional arguments\n' >&2
+    usage >&2
+    exit 64
+fi
 
-# #create vhost for wordpress dir calling addhost.sh
-# create_host() {
-#     echo "Begin creating a virtual host..."
-#     addhost
-# }
+if [[ -z $document_root ||
+      -z $wordpress_version ||
+      -z $site_user ]]
+then
+    printf 'Error: document root, version and site user are required\n' >&2
+    usage >&2
+    exit 64
+fi
 
-#Download && Unzip && Delete wp latest.zip (ok!)
-#NOTE: unzip process will create "wordpress" dir (ok!)
-dur_latestzip() {
-    echo "Downloading WordPress latest version..."
-    (wget -nd -P $1 https://wordpress.org/latest.zip  && echo "latest.zip download complete." || echo "latest.zip download failed.") && (cd $1 && unzip latest.zip && echo "Unzipping complete." || echo "Unzipping failed.") && (rm -r $1/latest.zip && echo "Zip file deleted." || echo "Removing zip file failed.") 
-}
+if ! validate_version "$wordpress_version"; then
+    printf 'Error: invalid WordPress version: %q\n' \
+        "$wordpress_version" >&2
+    exit 64
+fi
 
-#change owner for wordpress dir (ok!)
-change_owner() {
-    echo "Changing owner to wordpress dir..."
-    chown -R www-data:www-data "$1/wordpress/"
-}
+if ! validate_locale "$wordpress_locale"; then
+    printf 'Error: invalid WordPress locale: %q\n' \
+        "$wordpress_locale" >&2
+    exit 64
+fi
 
-#create db calling setmysql.sh
-create_db() {
-    echo "Begin setting MySQL database for wordpress..."
-    setmysql
-}
+if ! validate_site_user "$site_user"; then
+    printf 'Error: invalid site user: %q\n' "$site_user" >&2
+    exit 64
+fi
 
-#call all functions (logic is ok!)
+for required_command in \
+    id \
+    getent \
+    realpath \
+    stat \
+    wp \
+    mktemp \
+    mkdir \
+    find \
+    chmod \
+    chown \
+    mv \
+    rm
+do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        printf 'Error: required command not found: %s\n' \
+            "$required_command" >&2
+        exit 69
+    fi
+done
 
-#((create_host && echo "Virtual Host Created.") || (echo "virtual host FAILED..." && exit 1)) && 
-((dur_latestzip $1 && echo "WP download completed.") || (echo "WP download FAILED." && exit 1)) && ((change_owner $1 && echo "Owner changed.") || (echo "changing owner FAILED." && exit 1)) && ((create_db && echo "MySQL db created.") || (echo "data base creation FAILED." && exit 1))
+if ! resolve_site_user "$site_user"; then
+    exit 77
+fi
+
+readonly SITE_UID SITE_GID SITE_USER SITE_GROUP
+
+if ! canonical_web_root=$(realpath -e -- "$WEB_ROOT"); then
+    printf 'Error: web root does not exist: %s\n' "$WEB_ROOT" >&2
+    exit 72
+fi
+
+if ! absolute_doc_root=$(realpath -e -- "$document_root"); then
+    printf 'Error: document root does not exist: %s\n' \
+        "$document_root" >&2
+    exit 72
+fi
+
+if [[ ! -d $absolute_doc_root ]]; then
+    printf 'Error: document root is not a directory: %s\n' \
+        "$absolute_doc_root" >&2
+    exit 73
+fi
+
+if [[ $absolute_doc_root != "$canonical_web_root/"* ]]; then
+    printf 'Error: document root escapes the web root: %s\n' \
+        "$absolute_doc_root" >&2
+    exit 64
+fi
+
+if ! current_owner=$(stat -c '%u:%g' -- "$absolute_doc_root"); then
+    printf 'Error: unable to inspect document root ownership\n' >&2
+    exit 73
+fi
+
+expected_owner="${SITE_UID}:${SITE_GID}"
+
+if [[ $current_owner != "$expected_owner" ]]; then
+    printf 'Error: unexpected document root ownership\n' >&2
+    printf 'Expected: %s\n' "$expected_owner" >&2
+    printf 'Current:  %s\n' "$current_owner" >&2
+    exit 73
+fi
+
+wordpress_dir="$absolute_doc_root/wordpress"
+
+if [[ -e $wordpress_dir || -L $wordpress_dir ]]; then
+    printf 'Error: WordPress destination already exists: %s\n' \
+        "$wordpress_dir" >&2
+    printf 'Refusing to overwrite it.\n' >&2
+    exit 73
+fi
+
+if ! staging_dir=$(
+    mktemp -d "${absolute_doc_root}/.wphost.XXXXXX"
+); then
+    printf 'Error: unable to create staging directory\n' >&2
+    exit 73
+fi
+
+trap cleanup_staging EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+staged_wordpress="$staging_dir/wordpress"
+
+if ! mkdir -m 0700 -- "$staged_wordpress"; then
+    printf 'Error: unable to create staged WordPress directory\n' >&2
+    exit 73
+fi
+
+printf 'Downloading WordPress %s (%s)...\n' \
+    "$wordpress_version" "$wordpress_locale"
+
+if ! wp core download \
+    --path="$staged_wordpress" \
+    --version="$wordpress_version" \
+    --locale="$wordpress_locale" \
+    --allow-root
+then
+    printf 'Error: WordPress download failed\n' >&2
+    exit 70
+fi
+
+printf 'Verifying WordPress checksums...\n'
+
+if ! wp core verify-checksums \
+    --path="$staged_wordpress" \
+    --version="$wordpress_version" \
+    --locale="$wordpress_locale" \
+    --include-root \
+    --allow-root
+then
+    printf 'Error: WordPress checksum verification failed\n' >&2
+    exit 70
+fi
+
+if ! is_wordpress_tree "$staged_wordpress"; then
+    printf 'Error: downloaded WordPress tree is incomplete\n' >&2
+    exit 70
+fi
+
+if [[ -n $(find "$staged_wordpress" -type l -print -quit) ]]; then
+    printf 'Error: downloaded WordPress tree contains symbolic links\n' >&2
+    exit 70
+fi
+
+if ! find "$staged_wordpress" -type d -exec chmod 0755 {} +; then
+    printf 'Error: unable to set WordPress directory permissions\n' >&2
+    exit 73
+fi
+
+if ! find "$staged_wordpress" -type f -exec chmod 0644 {} +; then
+    printf 'Error: unable to set WordPress file permissions\n' >&2
+    exit 73
+fi
+
+# Safe because staged_wordpress is a new, private staging tree.
+if ! chown -R -- "$expected_owner" "$staged_wordpress"; then
+    printf 'Error: unable to set WordPress ownership\n' >&2
+    exit 73
+fi
+
+# Staging and destination are on the same filesystem.
+if ! mv -T -- "$staged_wordpress" "$wordpress_dir"; then
+    printf 'Error: unable to publish WordPress directory\n' >&2
+    exit 73
+fi
+
+cleanup_staging
+staging_dir=''
+
+trap - EXIT INT TERM HUP
+
+printf 'WordPress %s installed successfully.\n' "$wordpress_version"
+printf 'Path: %s\n' "$wordpress_dir"
+printf 'Owner: %s:%s\n' "$SITE_USER" "$SITE_GROUP"
+printf 'Database configuration has not been performed.\n'

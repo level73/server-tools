@@ -1,0 +1,2 @@
+# Normalize text files and keep Linux-compatible line endings.
+* text=auto eol=lf
