@@ -156,7 +156,7 @@ if (( EUID != 0 )); then
     exit 77
 fi
 
-for required_command in certbot apache2ctl realpath; do
+for required_command in certbot apache2ctl curl realpath; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         printf 'Error: required command not found: %s\n' "$required_command" >&2
         exit 69
@@ -265,6 +265,50 @@ if [[ ! -r $fullchain_file || ! -r $private_key_file ]]; then
     printf 'Expected: %s and %s\n' "$fullchain_file" "$private_key_file" >&2
     exit 70
 fi
+
+
+expected_redirect_prefix="https://$site_url"
+
+for certificate_domain in "${certificate_domains[@]}"; do
+    if ! redirect_result=$(
+        curl \
+            --silent \
+            --show-error \
+            --output /dev/null \
+            --max-time 10 \
+            --noproxy '*' \
+            --resolve "$certificate_domain:80:127.0.0.1" \
+            --write-out $'%{http_code}\n%{redirect_url}' \
+            "http://$certificate_domain/"
+    ); then
+        printf 'Error: unable to verify the HTTP redirect for %s\n' \
+            "$certificate_domain" >&2
+        exit 78
+    fi
+
+    redirect_status=${redirect_result%%$'\n'*}
+    redirect_target=${redirect_result#*$'\n'}
+
+    case "$redirect_status" in
+        301|308) ;;
+        *)
+            printf 'Error: HTTP request for %s returned %s, not a permanent redirect\n' \
+                "$certificate_domain" "$redirect_status" >&2
+            exit 78
+            ;;
+    esac
+
+    if [[ $redirect_target != "$expected_redirect_prefix" &&
+        $redirect_target != "$expected_redirect_prefix/"* ]]
+    then
+        printf 'Error: unexpected redirect target for %s: %s\n' \
+            "$certificate_domain" "$redirect_target" >&2
+        exit 78
+    fi
+
+    printf 'HTTP redirect verified: %s -> %s\n' \
+        "$certificate_domain" "$redirect_target"
+done
 
 printf 'Certificate installed successfully for %s\n' "$site_url"
 printf 'Certificate directory: %s\n' "$certificate_directory"

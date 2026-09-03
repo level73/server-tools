@@ -1,5 +1,31 @@
 # server-tools
-Set of bash scripts to run basic setup for virtual hosts, applications and whatnot
+
+Set of bash scripts to provision a VPS with the environemnt to host a generic website or a PHP application. 
+
+The suite sets up:
+- a Virtual host 
+- a dedicated PHP-FPM user
+- a MySQL database (when needed)
+- a WordPress instance (when needed)
+- a Let's Encrypt SSL certificate. 
+
+## Requirements
+- PHP-FPM (v 8.4 is recommended)
+- Apache webserver
+- MySQL
+- Certbot (Apache Plugin)
+
+Installation of Certbot is intentionally not managed by server-tools because the recommended
+package and installation method depend on the operating system and its release - as the other server side components.
+
+Verify the Certbot installation with:
+
+```bash
+certbot --version
+certbot plugins
+```
+The plugin list must include ```apache```.
+Refer to the official Certbot instructions for the target operating system.
 
 ## Installation
 1. Clone the repository from Github the way you want
@@ -13,6 +39,9 @@ Set of bash scripts to run basic setup for virtual hosts, applications and whatn
    `$ sudo ./install.sh`
 
 ## Usage
+The suite supports 3 types of setups:
+
+
 To create a virtual host for a generic website, and the relative directory in /var/www/, use:
 
 ```$ sudo addhost -t generic -u example.com -a www.example.com -d example.com```

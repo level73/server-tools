@@ -2,11 +2,40 @@
 
 set -Eeuo pipefail
 
-# Permissions
-if (( EUID != 0 )); then
-    printf 'Root privileges are required. Run this script with sudo.\n' >&2
-    exit 77
-fi
+usage() {
+    local command_name=${0##*/}
+
+    printf '%s\n' \
+        "Usage: $command_name [OPTIONS]" \
+        '' \
+        'Create an isolated Apache/PHP-FPM site environment.' \
+        '' \
+        'Options:' \
+        '  -t PROFILE      Site profile: wordpress, generic or loom73.' \
+        '                  Defaults to wordpress when omitted.' \
+        '  -u HOSTNAME     Primary hostname, for example app.example.com.' \
+        '  -a HOSTNAME     Additional ServerAlias; repeat for more aliases.' \
+        '  -d PATH         Site path relative to /var/www.' \
+        '                  Do not include a leading or trailing slash.' \
+        '  -o USER         Existing deploy user; valid only for loom73.' \
+        '  -v VERSION      WordPress version; valid only for the wordpress profile.' \
+        '  -l LOCALE       WordPress locale; defaults to en_US.' \
+        '  -h              Show this help message and exit.' \
+        '' \
+        'Profiles:' \
+        '  wordpress       Installs WordPress in PATH/wordpress.' \
+        '  generic         Creates PATH/public_html.' \
+        '  loom73          Prepares the server environment; leaves the vhost disabled.' \
+        '' \
+        'Examples:' \
+        "  sudo $command_name -t generic -u example.com -d example.com" \
+        "  sudo $command_name -t wordpress -u example.com \\" \
+        '      -a www.example.com -d example.com' \
+        "  sudo $command_name -t loom73 -u app.example.com \\" \
+        '      -d app.example.com -o deploy'
+}
+
+
 
 validate_site_user() {
     [[ ${1-} =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
@@ -247,6 +276,13 @@ validate_relative_doc_root() {
         (( ${#component} <= 255 )) || return 1
     done
 }
+validate_wordpress_version() {
+    [[ ${1-} =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+}
+
+validate_wordpress_locale() {
+    [[ ${1-} =~ ^[A-Za-z][A-Za-z0-9_.@-]{1,31}$ ]]
+}
 
 # Configuration
 if ! current_directory=$(
@@ -269,20 +305,6 @@ vhosts_path="/etc/apache2/sites-available"
 vhost_blueprint="$current_directory/blueprints/vhost.blueprint.conf"
 web_root="/var/www"
 
-for required_command in \
-    sha256sum \
-    getent \
-    id \
-    useradd
-do
-    if ! command -v "$required_command" >/dev/null 2>&1; then
-        printf 'Error: required command not found: %s\n' \
-            "$required_command" >&2
-        exit 69
-    fi
-done
-
-
 # CLI input
 site_url=''
 relative_doc_root=''
@@ -290,11 +312,15 @@ site_profile=''
 deploy_user=''
 site_aliases=()
 
+wordpress_version=''
+wordpress_locale='en_US'
+wordpress_options_used=false
+
 DEPLOY_USER=''
 DEPLOY_UID=''
 DEPLOY_GID=''
 
-while getopts ':u:d:a:t:o:' option; do
+while getopts ':u:d:a:t:o:v:l:h' option; do
     case "$option" in
         u)
             site_url=$OPTARG
@@ -311,12 +337,26 @@ while getopts ':u:d:a:t:o:' option; do
         o)
             deploy_user=$OPTARG
             ;;
+        h)
+            usage
+            exit 0
+            ;;
+        v)
+            wordpress_version=$OPTARG
+            wordpress_options_used=true
+            ;;
+        l)
+            wordpress_locale=$OPTARG
+            wordpress_options_used=true
+            ;;
         :)
             printf 'Error: -%s requires an argument\n' "$OPTARG" >&2
+            usage >&2
             exit 64
             ;;
         \?)
             printf 'Error: unknown option: -%s\n' "$OPTARG" >&2
+            usage >&2
             exit 64
             ;;
     esac
@@ -326,8 +366,28 @@ shift "$((OPTIND - 1))"
 
 if (( $# > 0 )); then
     printf 'Error: unexpected positional arguments\n' >&2
+    usage >&2
     exit 64
 fi
+# Requires sudo
+if (( EUID != 0 )); then
+    printf 'Error: root privileges are required; run with sudo\n' >&2
+    exit 77
+fi
+
+for required_command in \
+    sha256sum \
+    getent \
+    id \
+    useradd
+do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        printf 'Error: required command not found: %s\n' \
+            "$required_command" >&2
+        exit 69
+    fi
+done
+
 
 if [[ -z $site_profile ]]; then
     if ! IFS= read -r \
@@ -366,6 +426,36 @@ case "$site_profile" in
         exit 64
         ;;
 esac
+
+if [[ $site_profile == 'wordpress' ]]; then
+    if [[ -z $wordpress_version ]]; then
+        if ! IFS= read -r \
+            -p 'WordPress version to install: ' \
+            wordpress_version
+        then
+            printf '\nError: unable to read WordPress version\n' >&2
+            exit 64
+        fi
+    fi
+
+    if ! validate_wordpress_version "$wordpress_version"; then
+        printf 'Error: invalid WordPress version: %q\n' \
+            "$wordpress_version" >&2
+        exit 64
+    fi
+
+    if ! validate_wordpress_locale "$wordpress_locale"; then
+        printf 'Error: invalid WordPress locale: %q\n' \
+            "$wordpress_locale" >&2
+        exit 64
+    fi
+elif [[ $wordpress_options_used == true ]]; then
+    printf 'Error: -v and -l can only be used with -t wordpress\n' >&2
+    exit 64
+fi
+
+readonly wordpress_version wordpress_locale
+
 
 if [[ $site_profile == 'loom73' ]]; then
     if [[ -z $deploy_user ]]; then
@@ -906,23 +996,10 @@ case "$site_profile" in
                 exit 69
             fi
 
-            if ! IFS= read -r \
-                -p "WordPress version to install: " \
-                wordpress_version
-            then
-                printf '\nError: unable to read WordPress version\n' >&2
-                exit 64
-            fi
-
-            if [[ -z $wordpress_version ]]; then
-                printf 'Error: WordPress version cannot be empty\n' >&2
-                exit 64
-            fi
-
             if ! wphost \
                 -d "$absolute_doc_root" \
                 -v "$wordpress_version" \
-                -l "en_US" \
+                -l "$wordpress_locale" \
                 -o "$SITE_USER"
             then
                 printf 'Error: WordPress installation failed\n' >&2
@@ -1017,6 +1094,7 @@ then
 fi
 
 vhost_file="${vhosts_path}/${site_url}.conf"
+enabled_vhost="/etc/apache2/sites-enabled/${site_url}.conf"
 
 # Validate required Apache commands
 for required_command in apache2ctl a2ensite a2dissite systemctl mktemp ln chown chmod; do
@@ -1036,6 +1114,12 @@ fi
 if [[ -e $vhost_file || -L $vhost_file ]]; then
     printf 'Error: virtual host configuration already exists: %s\n' \
         "$vhost_file" >&2
+    exit 73
+fi
+
+if [[ -e $enabled_vhost || -L $enabled_vhost ]]; then
+    printf 'Error: virtual host is already enabled or has a stale link: %s\n' \
+        "$enabled_vhost" >&2
     exit 73
 fi
 
@@ -1123,6 +1207,18 @@ rollback_vhost() {
     a2dissite "$site_url.conf" >/dev/null 2>&1 || true
     rm -f -- "$vhost_file"
 }
+
+if [[ $site_profile == 'loom73' ]]; then
+    printf 'Virtual host prepared but not enabled: %s\n' "$site_url"
+    printf 'Configuration file: %s\n' "$vhost_file"
+    printf 'Expected public root after deploy: %s\n' "$site_public_root"
+    printf '%s\n' \
+        'Complete the deploy, configure .env and run Shuttle before activation.'
+
+    trap - EXIT
+    printf 'Done\n'
+    exit 0
+fi
 
 printf 'Enabling virtual host: %s\n' "$site_url"
 
