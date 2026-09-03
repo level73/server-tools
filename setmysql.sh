@@ -146,16 +146,11 @@ mysql_command=(
     mysql
     --user=root
     --protocol=socket
+    --password
     --batch
     --skip-column-names
 )
 readonly -a mysql_command
-
-if ! "${mysql_command[@]}" --execute='SELECT 1;' >/dev/null; then
-    printf 'Error: unable to connect to MySQL using local root authentication\n' \
-        >&2
-    exit 69
-fi
 
 if ! user_exists=$(
     "${mysql_command[@]}" --execute="
@@ -222,52 +217,45 @@ case "$user_exists" in
         exit 70
         ;;
 esac
+if [[ $create_database_user == true ]]; then
+    escaped_password=$(escape_sql_string "$database_password")
+fi
 
-if ! "${mysql_command[@]}" --execute="
-    CREATE DATABASE IF NOT EXISTS \`${database_name}\`;
-"; then
-    unset database_password 2>/dev/null || true
-    printf 'Error: unable to create database: %s\n' "$database_name" >&2
+# Apply all changes through one client session. Standard input remains attached
+# to the terminal for the root password prompt. SQL is provided separately on
+# file descriptor 3, so neither password is included in the process arguments.
+if ! "${mysql_command[@]}" \
+    --execute='source /dev/fd/3' \
+    3< <(
+    printf "%s\n" "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';"
+    printf 'CREATE DATABASE IF NOT EXISTS `%s`;\n' "$database_name"
+
+    if [[ $create_database_user == true ]]; then
+        printf "CREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\n" \
+            "$database_user" \
+            "$escaped_password"
+    fi
+
+    # ALL PRIVILEGES is intentionally limited to this database. It does not
+    # grant global privileges or GRANT OPTION.
+    printf "GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';\n" \
+        "$database_name" \
+        "$database_user"
+) >/dev/null
+then
+    unset database_password escaped_password 2>/dev/null || true
+    printf 'Error: unable to apply MySQL configuration\n' >&2
+    printf 'Database: %s\n' "$database_name" >&2
+    printf 'User:     %s@localhost\n' "$database_user" >&2
     exit 70
 fi
+
+unset database_password escaped_password 2>/dev/null || true
 
 printf 'Database ready: %s\n' "$database_name"
 
 if [[ $create_database_user == true ]]; then
-    escaped_password=$(escape_sql_string "$database_password")
-
-    # Send the password through standard input, never through argv or output.
-    # Suppress client diagnostics for this statement because some SQL errors
-    # can quote parts of the rejected statement.
-    if ! {
-        printf "%s\n" "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';"
-        printf "CREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\n" \
-            "$database_user" \
-            "$escaped_password"
-    } | "${mysql_command[@]}" >/dev/null 2>&1
-    then
-        unset database_password escaped_password
-        printf 'Error: unable to create MySQL user: %s@localhost\n' \
-            "$database_user" >&2
-        printf 'The database may already have been created.\n' >&2
-        exit 70
-    fi
-
-    unset database_password escaped_password
     printf 'Created MySQL user: %s@localhost\n' "$database_user"
-fi
-
-# ALL PRIVILEGES is intentionally limited to this database. It does not grant
-# global privileges or GRANT OPTION.
-if ! "${mysql_command[@]}" --execute="
-    GRANT ALL PRIVILEGES
-    ON \`${database_name}\`.*
-    TO '${database_user}'@'localhost';
-"; then
-    printf 'Error: unable to grant database privileges\n' >&2
-    printf 'Database: %s\n' "$database_name" >&2
-    printf 'User:     %s@localhost\n' "$database_user" >&2
-    exit 70
 fi
 
 printf 'Granted access to %s for %s@localhost.\n' \
