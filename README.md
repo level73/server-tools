@@ -14,6 +14,7 @@ The suite sets up:
 - Apache webserver
 - MySQL
 - Certbot (Apache Plugin)
+- WP CLI (if you want to use to deploy WP instances)
 
 Installation of Certbot is intentionally not managed by server-tools because the recommended
 package and installation method depend on the operating system and its release - as the other server side components.

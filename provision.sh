@@ -174,6 +174,32 @@ require_root() {
 resolve_command() {
     local requested_command=${1-}
     local resolved_command
+    local sibling_command
+
+    if [[ -z ${SCRIPT_DIRECTORY-} ]]; then
+        if ! SCRIPT_DIRECTORY=$(
+            cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P
+        ); then
+            printf 'Error: unable to determine script directory\n' >&2
+            return 1
+        fi
+    fi
+
+    sibling_command="$SCRIPT_DIRECTORY/${requested_command}.sh"
+
+    if [[ -e $sibling_command || -L $sibling_command ]]; then
+        if [[ ! -f $sibling_command ||
+              -L $sibling_command ||
+              ! -x $sibling_command ]]
+        then
+            printf 'Error: sibling command is not a regular executable: %s\n' \
+                "$sibling_command" >&2
+            return 1
+        fi
+
+        printf '%s' "$sibling_command"
+        return 0
+    fi
 
     if ! resolved_command=$(command -v "$requested_command"); then
         printf 'Error: required command not found: %s\n' \

@@ -991,12 +991,32 @@ case "$site_profile" in
             printf 'Existing WordPress installation found: %s\n' \
                 "$wordpress_dir"
         else
-            if ! command -v wphost >/dev/null 2>&1; then
+            sibling_wphost="$current_directory/wphost.sh"
+            wphost_command=''
+
+            if [[ -e $sibling_wphost || -L $sibling_wphost ]]; then
+                if [[ ! -f $sibling_wphost ||
+                      -L $sibling_wphost ||
+                      ! -x $sibling_wphost ]]
+                then
+                    printf 'Error: sibling wphost is not a regular executable: %s\n' \
+                        "$sibling_wphost" >&2
+                    exit 69
+                fi
+
+                wphost_command=$sibling_wphost
+            elif ! wphost_command=$(command -v wphost); then
                 printf 'Error: required command not found: wphost\n' >&2
+                exit 69
+            elif [[ $wphost_command != /* ||
+                    ! -f $wphost_command ||
+                    ! -x $wphost_command ]]
+            then
+                printf 'Error: wphost does not resolve to an executable file\n' >&2
                 exit 69
             fi
 
-            if ! wphost \
+            if ! "$wphost_command" \
                 -d "$absolute_doc_root" \
                 -v "$wordpress_version" \
                 -l "$wordpress_locale" \
