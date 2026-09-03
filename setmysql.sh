@@ -144,6 +144,7 @@ fi
 
 mysql_command=(
     mysql
+    --user=root
     --protocol=socket
     --batch
     --skip-column-names
