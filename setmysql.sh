@@ -42,12 +42,12 @@ escape_sql_string() {
 }
 
 confirm_user_creation() {
-    local database_user=${1-}
+    local requested_user=${1-}
     local answer
 
     while true; do
         if ! IFS= read -r \
-            -p "MySQL user ${database_user} does not exist. Create it? [Y/n] " \
+            -p "MySQL user ${requested_user} does not exist. Create it? [Y/n] " \
             answer
         then
             printf '\nError: unable to read confirmation\n' >&2
@@ -238,9 +238,8 @@ if ! "${mysql_command[@]}" \
 
     # ALL PRIVILEGES is intentionally limited to this database. It does not
     # grant global privileges or GRANT OPTION.
-    printf "GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';\n" \
-        "$database_name" \
-        "$database_user"
+   printf 'GRANT ALL PRIVILEGES ON `%s`.* TO ' "$database_name"
+   printf "'%s'@'localhost';\n" "$database_user"
 ) >/dev/null
 then
     unset database_password escaped_password 2>/dev/null || true
