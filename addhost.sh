@@ -37,6 +37,117 @@ usage() {
 
 
 
+# Paths reaching this function must be normalized absolute directory names.
+# Root ownership and a non-writable group/other mode protect every next entry
+# against replacement by an application user. No existing metadata is changed.
+require_trusted_directory() {
+    local directory=${1-}
+    local metadata
+    local owner
+    local mode
+
+    if [[ -L $directory || ! -d $directory ]]; then
+        printf 'Error: expected a real, root-managed directory: %s\n' "$directory" >&2
+        return 1
+    fi
+
+    if ! metadata=$(stat -c '%u:%a' -- "$directory"); then
+        printf 'Error: unable to inspect directory: %s\n' "$directory" >&2
+        return 1
+    fi
+
+    owner=${metadata%%:*}
+    mode=${metadata#*:}
+    if [[ $owner != 0 || ! $mode =~ ^[0-7]{3,4}$ ]]; then
+        printf 'Error: directory must be owned by root: %s\n' "$directory" >&2
+        return 1
+    fi
+    if (( (8#$mode & 0022) != 0 )); then
+        printf 'Error: directory is writable by group or others: %s\n' "$directory" >&2
+        return 1
+    fi
+}
+
+trusted_directory_chain() {
+    local directory=${1-}
+    local create_missing=${2-false}
+    local current=''
+    local component
+    local -a components
+
+    if [[ $directory != /* || $directory == *//* ||
+          ( $directory != / && $directory == */ ) ]]; then
+        printf 'Error: expected a normalized absolute directory path\n' >&2
+        return 1
+    fi
+    [[ $create_missing == true || $create_missing == false ]] || return 1
+
+    IFS='/' read -r -a components <<< "${directory#/}"
+    # Validate the entire string as read consumes only the first line.
+    [[ $directory =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    for component in "${components[@]}"; do
+        [[ $component =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+    done
+
+    require_trusted_directory / || return 1
+    for component in "${components[@]}"; do
+        current+="/$component"
+        if [[ ! -e $current && ! -L $current && $create_missing == true ]]; then
+            # The parent has already been verified. Never use mkdir -p here.
+            if ! mkdir -m 0755 -- "$current"; then
+                printf 'Error: unable to create root-managed directory: %s\n' "$current" >&2
+                return 1
+            fi
+        fi
+        require_trusted_directory "$current" || return 1
+    done
+}
+
+ensure_site_directory() {
+    local name=${1-}
+    local mode=${2-}
+    local directory
+    local metadata
+
+    # Only these direct children are managed here; nested paths are refused.
+    case "$name:$mode" in
+        logs:750|public_html:755) ;;
+        *) return 1 ;;
+    esac
+    directory="$absolute_doc_root/$name"
+
+    if [[ -L $directory ]]; then
+        printf 'Error: refusing symbolic-link directory: %s\n' "$directory" >&2
+        return 1
+    fi
+    if [[ ! -e $directory ]]; then
+        # An application-writable parent is never used for a root-level
+        # install/chown/chmod. mkdir without -p refuses a concurrent entry.
+        if ! runuser --user "$SITE_USER" --group "$SITE_GROUP" -- \
+            mkdir -m "$mode" -- "$directory" </dev/null
+        then
+            printf 'Error: unable to create directory as site user: %s\n' "$directory" >&2
+            return 1
+        fi
+    fi
+
+    if [[ -L $directory || ! -d $directory ]]; then
+        printf 'Error: expected a real site directory: %s\n' "$directory" >&2
+        return 1
+    fi
+    if ! metadata=$(LC_ALL=C stat -c '%F:%u:%g:%a' -- "$directory"); then
+        printf 'Error: unable to inspect site directory: %s\n' "$directory" >&2
+        return 1
+    fi
+    if [[ $metadata != "directory:$SITE_UID:$SITE_GID:$mode" ]]; then
+        printf 'Error: unexpected directory ownership or mode: %s\n' "$directory" >&2
+        printf 'Expected: directory:%s:%s:%s\nCurrent: %s\n' \
+            "$SITE_UID" "$SITE_GID" "$mode" "$metadata" >&2
+        printf 'Existing metadata has not been changed.\n' >&2
+        return 1
+    fi
+}
+
 validate_site_user() {
     [[ ${1-} =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
 }
@@ -379,7 +490,13 @@ for required_command in \
     sha256sum \
     getent \
     id \
-    useradd
+    useradd \
+    stat \
+    mkdir \
+    chown \
+    chmod \
+    realpath \
+    runuser
 do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         printf 'Error: required command not found: %s\n' \
@@ -536,17 +653,33 @@ if ! command -v realpath >/dev/null 2>&1; then
     exit 69
 fi
 
+if ! trusted_directory_chain "$web_root"; then
+    printf 'Error: web-root ancestors must be real root-managed directories\n' >&2
+    exit 73
+fi
+
 canonical_web_root=$(realpath -e -- "$web_root") || {
     printf 'Error: web root does not exist: %s\n' "$web_root" >&2
     exit 72
 }
 
-absolute_doc_root=$(
-    realpath -m -- "$canonical_web_root/$relative_doc_root"
-) || {
-    printf 'Error: unable to resolve document root\n' >&2
-    exit 72
-}
+absolute_doc_root="$canonical_web_root/$relative_doc_root"
+application_parent=${absolute_doc_root%/*}
+
+# Refuse an existing vhost before creating accounts or touching site paths.
+vhost_file="${vhosts_path}/${site_url}.conf"
+enabled_vhost="/etc/apache2/sites-enabled/${site_url}.conf"
+if [[ -e $vhost_file || -L $vhost_file ||
+      -e $enabled_vhost || -L $enabled_vhost ]]; then
+    printf 'Error: virtual host already exists or has a stale enabled link: %s\n' \
+        "$site_url" >&2
+    exit 73
+fi
+
+if ! trusted_directory_chain "$application_parent" true; then
+    printf 'Error: application-root ancestors are not safe for privileged writes\n' >&2
+    exit 73
+fi
 
 # Additional guard: the resolved path must be a descendant
 # of the webroot, not the webroot itself.
@@ -556,8 +689,9 @@ if [[ $absolute_doc_root != "$canonical_web_root/"* ]]; then
     exit 64
 fi
 
-if [[ -e $absolute_doc_root && ! -d $absolute_doc_root ]]; then
-    printf 'Error: document root exists but is not a directory: %s\n' \
+if [[ -L $absolute_doc_root ||
+      ( -e $absolute_doc_root && ! -d $absolute_doc_root ) ]]; then
+    printf 'Error: document root is a symbolic link or not a directory: %s\n' \
         "$absolute_doc_root" >&2
     exit 73
 fi
@@ -666,30 +800,22 @@ if [[ -d $absolute_doc_root ]]; then
         exit 73
     fi
 
-    # The setgid bit is required for Loom73 so that Shuttle-created
-    # runtime directories inherit the dedicated site group.
-    if [[ $site_profile == 'loom73' ]]; then
-        if ! current_mode=$(stat -c '%a' -- "$absolute_doc_root"); then
-            printf 'Error: unable to inspect application root mode\n' >&2
-            exit 73
-        fi
-
-        if [[ $current_mode != "$root_mode" ]]; then
-            printf 'Error: Loom73 application root has unexpected mode.\n' \
-                >&2
-            printf 'Path:     %s\n' "$absolute_doc_root" >&2
-            printf 'Expected: %s\n' "$root_mode" >&2
-            printf 'Current:  %s\n' "$current_mode" >&2
-            printf 'Refusing to change an existing directory automatically.\n' \
-                >&2
-            exit 73
-        fi
+    if ! current_mode=$(stat -c '%a' -- "$absolute_doc_root"); then
+        printf 'Error: unable to inspect application root mode\n' >&2
+        exit 73
+    fi
+    if [[ $current_mode != "${root_mode#0}" ]]; then
+        printf 'Error: application root has unexpected mode.\n' >&2
+        printf 'Path: %s\nExpected: %s\nCurrent: %s\n' \
+            "$absolute_doc_root" "${root_mode#0}" "$current_mode" >&2
+        printf 'Refusing to change an existing directory automatically.\n' >&2
+        exit 73
     fi
 
     printf 'Application root already exists: %s\n' \
         "$absolute_doc_root"
 else
-    if ! mkdir -p -- "$absolute_doc_root"; then
+    if ! mkdir -m 0700 -- "$absolute_doc_root"; then
         printf 'Error: unable to create application root: %s\n' \
             "$absolute_doc_root" >&2
         exit 73
@@ -732,20 +858,7 @@ else
     logs_dir="$absolute_doc_root/logs"
     php_error_log="$logs_dir/php-error.log"
 
-    if [[ -e $logs_dir && ! -d $logs_dir ]]; then
-        printf 'Error: logs path exists but is not a directory: %s\n' \
-            "$logs_dir" >&2
-        exit 73
-    fi
-
-    if ! install -d \
-        -m 0750 \
-        -o "$SITE_UID" \
-        -g "$SITE_GID" \
-        -- "$logs_dir"
-    then
-        printf 'Error: unable to create logs directory: %s\n' \
-            "$logs_dir" >&2
+    if ! ensure_site_directory logs 750; then
         exit 73
     fi
 
@@ -974,8 +1087,9 @@ case "$site_profile" in
     wordpress)
         wordpress_dir="$absolute_doc_root/wordpress"
 
-        if [[ -e $wordpress_dir && ! -d $wordpress_dir ]]; then
-            printf 'Error: WordPress path exists but is not a directory: %s\n' \
+        if [[ -L $wordpress_dir ||
+              ( -e $wordpress_dir && ! -d $wordpress_dir ) ]]; then
+            printf 'Error: WordPress path is a symbolic link or not a directory: %s\n' \
                 "$wordpress_dir" >&2
             exit 73
         fi
@@ -1038,22 +1152,7 @@ case "$site_profile" in
         ;;
 
     generic)
-        public_html_dir="$absolute_doc_root/public_html"
-
-        if [[ -e $public_html_dir && ! -d $public_html_dir ]]; then
-            printf 'Error: public_html exists but is not a directory: %s\n' \
-                "$public_html_dir" >&2
-            exit 73
-        fi
-
-        if ! install -d \
-            -m 0755 \
-            -o "$SITE_UID" \
-            -g "$SITE_GID" \
-            -- "$public_html_dir"
-        then
-            printf 'Error: unable to create public_html: %s\n' \
-                "$public_html_dir" >&2
+        if ! ensure_site_directory public_html 755; then
             exit 73
         fi
         ;;
@@ -1146,7 +1245,7 @@ fi
 # Verify that Apache is healthy before changing anything.
 if ! apache2ctl configtest; then
     printf 'Error: the existing Apache configuration is invalid.\n' >&2
-    printf 'No changes have been made.\n' >&2
+    printf 'No Apache vhost changes have been made; earlier site resources may exist.\n' >&2
     exit 78
 fi
 

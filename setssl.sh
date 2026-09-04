@@ -27,12 +27,16 @@ usage() {
 }
 
 validate_hostname() {
-    local candidate=$1
+    local candidate=${1-}
     local label
     local -a labels
 
     [[ -n $candidate ]] || return 1
     (( ${#candidate} <= 253 )) || return 1
+
+    # Validate the whole string before read, which only consumes one line.
+    [[ $candidate =~ ^[a-z0-9.-]+$ ]] || return 1
+
     [[ $candidate != .* ]] || return 1
     [[ $candidate != *. ]] || return 1
     [[ $candidate != *..* ]] || return 1

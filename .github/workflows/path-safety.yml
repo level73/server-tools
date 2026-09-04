@@ -1,0 +1,48 @@
+name: Path safety checks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  regressions:
+    name: Non-privileged regressions (20 tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out selected revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Run validation, syntax and orchestration tests
+        run: python3 -B -m unittest discover -s tests -p test_safety.py -v
+
+  linux-paths:
+    name: Privileged Linux filesystem checks (14 tests)
+    needs: regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out selected revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Check fixture prerequisites
+        run: |
+          for command in python3 bash stat mkdir mv runuser ln rm; do
+            command -v "$command"
+          done
+          getent passwd nobody
+          sudo -n true
+      # Run only helper-level tests, never the provisioning entry points.
+      # Root privileges apply to this disposable GitHub-hosted VM, not a VPS.
+      - name: Run isolated filesystem tests
+        run: |
+          sudo -n env SERVER_TOOLS_RUN_PRIVILEGED_TESTS=1 \
+            python3 -B tests/test_paths_linux.py
