@@ -17,9 +17,9 @@ usage() {
         '  -h           Show this help message.' \
         '' \
         'Examples:' \
-        '  sudo setssl -u example.com -a www.example.com \' \
+        "  sudo setssl -u example.com -a www.example.com \\" \
         '      -m admin@example.com -e staging' \
-        '  sudo setssl -u example.com -a www.example.com \' \
+        "  sudo setssl -u example.com -a www.example.com \\" \
         '      -m admin@example.com -e production' \
         '' \
         'The staging mode validates the complete ACME flow without saving' \

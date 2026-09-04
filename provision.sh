@@ -55,10 +55,10 @@ prepare_usage() {
         "  sudo $command_name prepare -t generic \\" \
         '      -u example.com -d example.com' \
         "  sudo $command_name prepare -t wordpress \\" \
-        '      -u example.com -d example.com \' \
+        "      -u example.com -d example.com \\" \
         '      -b example_wp -r example_wp -v 6.8.2' \
         "  sudo $command_name prepare -t loom73 \\" \
-        '      -u app.example.com -d app.example.com \' \
+        "      -u app.example.com -d app.example.com \\" \
         '      -b app_db -r app_db -o deploy'
 }
 
@@ -85,7 +85,7 @@ activate_usage() {
         "  sudo $command_name activate -t loom73 \\" \
         '      -u app.example.com -d app.example.com' \
         "  sudo $command_name activate -t loom73 \\" \
-        '      -u app.example.com -d app.example.com \' \
+        "      -u app.example.com -d app.example.com \\" \
         '      -m admin@example.com -e staging'
 }
 
@@ -247,8 +247,8 @@ validate_common_input() {
     fi
 
     for alias_index in "${!site_aliases[@]}"; do
-        normalized_alias=${site_aliases[$alias_index],,}
-        site_aliases[$alias_index]=$normalized_alias
+        normalized_alias=${site_aliases[alias_index],,}
+        site_aliases[alias_index]=$normalized_alias
 
         if ! validate_hostname "$normalized_alias"; then
             printf 'Error: invalid hostname alias: %q\n' \

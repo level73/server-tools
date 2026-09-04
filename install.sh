@@ -246,7 +246,7 @@ for index in "${changed_indexes[@]}"; do
         exit 73
     fi
 
-    temporary_paths[$index]=$temporary_path
+    temporary_paths[index]=$temporary_path
 
     if ! install \
         -o root \
@@ -287,7 +287,7 @@ fi
 # Every file is already staged in the destination filesystem. Each rename is
 # therefore atomic: a command is always either the previous or the new file.
 for index in "${changed_indexes[@]}"; do
-    temporary_path=${temporary_paths[$index]}
+    temporary_path=${temporary_paths[index]}
     target_path=${target_paths[$index]}
 
     if ! mv -fT -- "$temporary_path" "$target_path"; then
@@ -295,7 +295,7 @@ for index in "${changed_indexes[@]}"; do
         exit 73
     fi
 
-    temporary_paths[$index]=''
+    temporary_paths[index]=''
     printf 'Installed: %s\n' "${display_names[$index]}"
 done
 

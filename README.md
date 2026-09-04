@@ -18,12 +18,12 @@ The scripts target a Debian/Ubuntu-style server layout with systemd and GNU comm
 
 Required for site provisioning:
 
-- Bash and the system utilities used by the scripts, including Linux account-management tools.
+- Bash and the system utilities used by the scripts, including Linux account-management tools and util-linux `runuser`.
 - Root privileges through `sudo` or a root session.
 - Apache 2.4, with `a2ensite`, `a2dissite` and `apache2ctl` available.
 - Apache modules `proxy`, `proxy_fcgi`, `headers` and `rewrite`. Loom73 also requires `expires` and `mime`.
 - PHP-FPM **8.4**, using `php8.4-fpm.service`, `/usr/sbin/php-fpm8.4` and `/etc/php/8.4/fpm/pool.d`.
-- An existing `/var/www` directory and the `www-data` account and group used for PHP-FPM socket access.
+- An existing, root-owned `/var/www` directory and the `www-data` account and group used for PHP-FPM socket access. See the path requirements below before using nested site paths.
 
 PHP 8.4 is currently fixed in the scripts, not an optional recommendation. Review the scripts and blueprints before using another PHP version or server layout.
 
@@ -89,6 +89,19 @@ Hostnames must be plain names such as `app.example.com`, without a scheme, port 
 
 Replace all example domains, account names and database names before running these commands.
 
+### Path ownership and existing directories
+
+The application root is `/var/www/<path>`. Every ancestor, from `/` through `/var/www` to its immediate parent, must be a real directory owned by root, without group or other write permission. Symlinks, including dangling links, are rejected. For `-d clients/example.com`, `/var/www/clients` is an infrastructure container, not a deploy-owned application directory. Missing containers beneath `/var/www` are created with mode `0755`; existing incompatible containers are rejected, not repaired.
+
+The final application root has different ownership by profile:
+
+| Profile | Application root owner and group | Mode |
+| --- | --- | --- |
+| `generic`, `wordpress` | Site account and site group | `0755` |
+| `loom73` | Deploy account and site group | `2751` |
+
+For generic and WordPress sites, `logs` is created as the site account with mode `0750`; generic `public_html` uses `0755`. Existing directories must match the expected ownership and mode and must not be symlinks. The scripts do not recursively repair an existing tree. Inspect a rejected path before changing its permissions, especially when other applications use it.
+
 ### Generic website
 
 ```bash
@@ -111,6 +124,8 @@ sudo provision prepare -t wordpress \
 ```
 
 The database step runs first and prompts for the required credentials. WordPress is then downloaded into `/var/www/example.com/wordpress`, its core checksums are verified, and the HTTP virtual host is enabled. The default locale is `en_US`.
+
+Download and verification take place in a private, root-owned staging directory with mode `0700`, under the application root's parent. The verified tree is then moved into place without replacing an existing destination. Staging and the application root must be on the same filesystem; a site root mounted on a different filesystem from its parent is not supported by this workflow.
 
 This prepares WordPress files and a database. It does not create `wp-config.php`, install database tables, create an administrator account or configure plugins. Complete WordPress setup separately, using the database credentials supplied during provisioning. Configure HTTPS before entering administrative credentials through the browser.
 
@@ -200,9 +215,36 @@ HSTS is not configured automatically. Apply it separately once the HTTPS policy 
 
 Use each command's `-h` option for its arguments. Calling `addhost` directly does not provision a database or request a certificate.
 
+## Logs
+
+- Apache access and error logs use `${APACHE_LOG_DIR}`, as configured by Apache, outside the application tree.
+- PHP application errors for generic and WordPress sites use `/var/www/<path>/logs/php-error.log`.
+- PHP application errors for Loom73 use `syslog`.
+
+Apache logging and PHP application logging are configured separately. The suite does not configure log rotation or retention; review these for each destination. Updating a blueprint does not migrate existing virtual hosts or PHP-FPM pools.
+
+## Checks
+
+Run the non-privileged regression suite from the repository root, without `sudo`:
+
+```bash
+python3 -B -m unittest discover -s tests -p test_safety.py -v
+```
+
+It requires Python 3.8+ and Bash. The 20 tests cover syntax, input validation, SQL generation, mocked orchestration and path-policy checks. To check all scripts with ShellCheck separately:
+
+```bash
+shellcheck --severity=style ./*.sh
+```
+
+The **Path safety checks** GitHub Actions workflow is started manually from the repository's Actions tab. It runs the 20 ordinary tests, followed by 14 filesystem tests on a separate GitHub-hosted Ubuntu 24.04 runner with root privileges. No deployment secrets or VPS connection are required. Use reviewed revisions and GitHub-hosted runners, not a production self-hosted runner.
+
+The filesystem tests exercise ownership, permissions, symlinks and WordPress tree publication using temporary fixtures. They do not provision Apache, PHP-FPM, MySQL or certificates, or perform a full WordPress installation. Passing them is not an end-to-end deployment check. ShellCheck and secret scanning are not part of this manual workflow. See [tests/README.md](tests/README.md) for scope and local Linux execution.
+
 ## Security and operational limits
 
 - **Root-level changes.** Review the scripts and installed blueprints before use. They modify system accounts, groups, server configuration and application directories. Use backups and a test environment appropriate to the server.
+- **Trusted administration and tooling.** Path checks assume normal Linux ownership and permissions, trusted administrators and no concurrent privileged mount or path reconfiguration. `wphost` invokes WP-CLI as root from its private staging directory; its executable, packages and applicable configuration must be trusted. Private staging does not sandbox WP-CLI.
 - **Dedicated PHP identities, not a sandbox.** Each site runs PHP under a separate account. This reduces the use of shared credentials and ownership, but does not provide container isolation or prevent access to files readable by other users.
 - **Writable WordPress code.** Site ownership permits WordPress and MainWP updates. It also permits a compromised PHP process to modify that site's application code. This is an operational trade-off, not an uploads-only permission model.
 - **Application secrets remain an application responsibility.** The suite does not write `.env` or WordPress configuration. Set their permissions as part of deployment so that only the intended accounts can read them.

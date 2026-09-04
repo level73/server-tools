@@ -189,20 +189,20 @@ resolve_or_create_site_user() {
     local expected_home=${1-}
     local passwd_entry
     local account_name
-    local account_password
+    local _account_password
     local account_uid
-    local account_gid
-    local account_gecos
+    local _account_gid
+    local _account_gecos
     local account_home
     local account_shell
 
     if passwd_entry=$(getent passwd "$SITE_USER"); then
         IFS=':' read -r \
             account_name \
-            account_password \
+            _account_password \
             account_uid \
-            account_gid \
-            account_gecos \
+            _account_gid \
+            _account_gecos \
             account_home \
             account_shell \
             <<< "$passwd_entry"
@@ -279,10 +279,10 @@ resolve_deploy_user() {
     local requested_user=${1-}
     local passwd_entry
     local account_name
-    local account_password
+    local _account_password
     local account_uid
-    local account_gid
-    local account_gecos
+    local _account_gid
+    local _account_gecos
     local account_home
     local account_shell
 
@@ -300,10 +300,10 @@ resolve_deploy_user() {
 
     IFS=':' read -r \
         account_name \
-        account_password \
+        _account_password \
         account_uid \
-        account_gid \
-        account_gecos \
+        _account_gid \
+        _account_gecos \
         account_home \
         account_shell \
         <<< "$passwd_entry"
@@ -328,7 +328,6 @@ resolve_deploy_user() {
 
     DEPLOY_USER=$account_name
     DEPLOY_UID=$account_uid
-    DEPLOY_GID=$account_gid
 }
 
 validate_hostname() {
@@ -429,7 +428,6 @@ wordpress_options_used=false
 
 DEPLOY_USER=''
 DEPLOY_UID=''
-DEPLOY_GID=''
 
 while getopts ':u:d:a:t:o:v:l:h' option; do
     case "$option" in
@@ -594,7 +592,7 @@ elif [[ -n $deploy_user ]]; then
 fi
 
 readonly site_profile install_dir site_user_prefix
-readonly DEPLOY_USER DEPLOY_UID DEPLOY_GID
+readonly DEPLOY_USER DEPLOY_UID
 
 if [[ -z $site_url ]]; then
     IFS= read -r -p "Please enter the desired hostname: " site_url

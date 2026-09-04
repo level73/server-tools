@@ -7,9 +7,9 @@ readonly WEB_ROOT='/var/www'
 usage() {
     printf '%s\n' \
         "Usage: sudo ${0##*/} \\" \
-        '  -d DOCUMENT_ROOT \' \
-        '  -v VERSION \' \
-        '  -o SITE_USER \' \
+        "  -d DOCUMENT_ROOT \\" \
+        "  -v VERSION \\" \
+        "  -o SITE_USER \\" \
         '  [-l LOCALE]'
 }
 

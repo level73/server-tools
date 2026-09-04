@@ -14,6 +14,22 @@ The suite refuses to run `test_safety.py` as root. The separate Linux fixture cl
 
 `SERVER_TOOLS_ROOT` can select another checkout and `BASH_BIN` can select a Bash executable. On Windows, Git Bash permits the non-privileged checks, but does not validate Linux ownership, runuser or filesystem semantics.
 
+## GitHub Actions
+
+The repository includes `.github/workflows/path-safety.yml`. After the workflow
+has been pushed to the default branch, open **Actions → Path safety checks → Run
+workflow** and select a reviewed revision.
+
+The first job runs only `test_safety.py` without root privileges: expect 20 tests.
+The second runs `test_paths_linux.py` with explicit root opt-in on a separate
+GitHub-hosted Ubuntu 24.04 VM: expect 14 tests with no skips. It starts only after
+the ordinary tests pass. No deployment secrets or VPS access are needed.
+
+Keep these jobs on GitHub-hosted runners. Do not change them to use a production
+self-hosted runner. This workflow does not run ShellCheck or scan for secrets;
+those remain separate checks. A green run verifies the tested helpers, not a
+complete provisioning flow.
+
 ## Opt-in Linux filesystem checks
 
 Run this separately on a disposable Linux machine after reviewing the test:
