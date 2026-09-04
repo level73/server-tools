@@ -41,6 +41,78 @@ escape_sql_string() {
     printf '%s' "$value"
 }
 
+parse_mysql_preflight() {
+    local response=${1-}
+
+    # The first result is SELECT EXISTS; SHOW returns a tab-separated row.
+    # Older MySQL releases without partial_revokes return no SHOW row and
+    # use the legacy wildcard semantics (equivalent to OFF).
+    case "$response" in
+        0|1)
+            user_exists=$response
+            partial_revokes='OFF'
+            ;;
+        $'0\npartial_revokes\tOFF'|$'1\npartial_revokes\tOFF')
+            user_exists=${response%%$'\n'*}
+            partial_revokes='OFF'
+            ;;
+        $'0\npartial_revokes\tON'|$'1\npartial_revokes\tON')
+            user_exists=${response%%$'\n'*}
+            partial_revokes='ON'
+            ;;
+        *)
+            printf 'Error: unexpected MySQL preflight response\n' >&2
+            return 1
+            ;;
+    esac
+}
+
+database_grant_identifier() {
+    local name=${1-}
+    local mode=${2-}
+
+    if ! validate_database_name "$name"; then
+        printf 'Error: invalid database name for grant\n' >&2
+        return 1
+    fi
+
+    case "$mode" in
+        OFF)
+            # Backticks quote an SQL identifier, but do not disable the
+            # database-level privilege pattern. Escape every underscore.
+            name=${name//_/\\_}
+            ;;
+        ON)
+            # With partial_revokes enabled, database grants are literal.
+            ;;
+        *)
+            printf 'Error: unknown partial_revokes mode\n' >&2
+            return 1
+            ;;
+    esac
+
+    printf '%s' "$name"
+}
+
+emit_mysql_configuration() {
+    printf '%s\n' "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';"
+    # Backticks below are SQL identifier quotes, not Bash substitution.
+    # shellcheck disable=SC2016
+    printf 'CREATE DATABASE IF NOT EXISTS `%s`;\n' "$database_name"
+
+    if [[ $create_database_user == true ]]; then
+        printf "CREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\n" \
+            "$database_user" \
+            "$escaped_password"
+    fi
+
+    # Use the separately escaped grant identifier, never for CREATE DATABASE.
+    # No global privileges or GRANT OPTION are assigned.
+    # shellcheck disable=SC2016
+    printf 'GRANT ALL PRIVILEGES ON `%s`.* TO ' "$grant_database_name"
+    printf "'%s'@'localhost';\n" "$database_user"
+}
+
 confirm_user_creation() {
     local requested_user=${1-}
     local answer
@@ -152,7 +224,7 @@ mysql_command=(
 )
 readonly -a mysql_command
 
-if ! user_exists=$(
+if ! preflight_result=$(
     "${mysql_command[@]}" --execute="
         SELECT EXISTS(
             SELECT 1
@@ -160,12 +232,27 @@ if ! user_exists=$(
             WHERE User = '${database_user}'
               AND Host = 'localhost'
         );
+        SHOW GLOBAL VARIABLES WHERE Variable_name = 'partial_revokes';
     "
 ); then
-    printf 'Error: unable to check MySQL user: %s@localhost\n' \
+    printf 'Error: unable to check MySQL account and grant mode: %s@localhost\n' \
         "$database_user" >&2
     exit 70
 fi
+
+if ! parse_mysql_preflight "$preflight_result"; then
+    exit 70
+fi
+unset preflight_result
+
+if ! grant_database_name=$(
+    database_grant_identifier "$database_name" "$partial_revokes"
+); then
+    exit 70
+fi
+
+readonly user_exists partial_revokes grant_database_name
+printf 'MySQL grant mode: partial_revokes=%s\n' "$partial_revokes"
 
 case "$user_exists" in
     0)
@@ -210,6 +297,7 @@ case "$user_exists" in
         create_database_user=false
         printf 'Reusing existing MySQL user: %s@localhost\n' \
             "$database_user"
+        printf 'Existing grants and password are left unchanged.\n'
         ;;
     *)
         printf 'Error: unexpected response while checking MySQL user: %q\n' \
@@ -226,21 +314,7 @@ fi
 # file descriptor 3, so neither password is included in the process arguments.
 if ! "${mysql_command[@]}" \
     --execute='source /dev/fd/3' \
-    3< <(
-    printf "%s\n" "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';"
-    printf 'CREATE DATABASE IF NOT EXISTS `%s`;\n' "$database_name"
-
-    if [[ $create_database_user == true ]]; then
-        printf "CREATE USER '%s'@'localhost' IDENTIFIED BY '%s';\n" \
-            "$database_user" \
-            "$escaped_password"
-    fi
-
-    # ALL PRIVILEGES is intentionally limited to this database. It does not
-    # grant global privileges or GRANT OPTION.
-   printf 'GRANT ALL PRIVILEGES ON `%s`.* TO ' "$database_name"
-   printf "'%s'@'localhost';\n" "$database_user"
-) >/dev/null
+    3< <(emit_mysql_configuration) >/dev/null
 then
     unset database_password escaped_password 2>/dev/null || true
     printf 'Error: unable to apply MySQL configuration\n' >&2
